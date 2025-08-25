@@ -145,6 +145,7 @@ def calculate_sample_weights(y):
 평균 CV RMSE: 0.4507 ± 0.0226
 평균 CV R2: 0.9484 ± 0.0055
 Competition Score: 0.9506 (A: 0.9535, B: 0.9488)
+(잘못된 분할 방식으로 인한 CV 과대예측 한계가 있었음. 원인 : 훈련 데이터 스캐폴드와 테스트 데이터 스캐폴드가 겹치는 부분이 거의 없었음.)
 
 # Leaderboard
 Public LB Score: 0.5689
@@ -172,8 +173,7 @@ Public LB Score: 0.5689
 | exp3 | +AutoGluon Meta | 0.279 | 0.300 | AutoGluon 메타 모델 (부적합) |
 | exp6 | MPNN Embedding+Tree | 0.473 | 0.535 | 임베딩 + Tree 모델 결합 |
 | **exp7** | **+Weighted Loss+SMILES Aug** | **0.451** | **0.569** | **고활성 가중치 + 선택적 증강** |
-| exp8-15 | 다양한 개선 시도 | - | 0.3~0.5 | Scaffold 편향, 다른 증강 방법 등 |
-| exp16 | exp7 기반 추가 실험 | - | - | CV 문제로 중단 |
+| exp8-15 | 다양한 개선 시도 | - | 0.3~0.5 | Scaffold Hopping, 다른 증강 방법 등 |
 
 **결론**: exp7의 가중치 손실 함수와 선택적 SMILES 증강이 가장 효과적
 
