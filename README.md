@@ -2,8 +2,8 @@
 
 ## 📌 대회 개요
 
-### 대회 배경
-**Jump AI 2025: 제3회 AI 신약개발 경진대회**는 AI 신약개발 생태계 활성화와 젊은 연구원들의 인재 유입을 목표로 개최된 대회입니다.
+### 대회 정보
+**[Jump AI 2025: 제3회 AI 신약개발 경진대회](https://dacon.io/competitions/official/236530/overview/description)**는 AI 신약개발 생태계 활성화와 젊은 연구원들의 인재 유입을 목표로 개최된 대회입니다.
 
 ### 주제
 MAP3K5 (ASK1) IC50 활성값 예측 모델 개발
@@ -22,6 +22,7 @@ Score = 0.4 × (1 - min(A, 1)) + 0.6 × B
 ### 데이터셋 특성
 - **학습 데이터**: 3,834개 분자 (CAS, ChEMBL, PubChem에서 수집)
 - **테스트 데이터**: 127개 분자
+- **원본 데이터**: [Dacon 대회 데이터 페이지](https://dacon.io/competitions/official/236530/data) 참고
 - **pIC50 분포**: 3.3 ~ 13.0 (매우 넓은 활성 범위)
 - **핵심 도전 과제**: 
   - 고활성 분자(pIC50 > 10)는 전체의 0.8% (27개)로 극히 소수
@@ -45,11 +46,11 @@ Score = 0.4 × (1 - min(A, 1)) + 0.6 × B
 - 고활성 분자 증강: pIC50 > 10인 분자에 대해 SMILES Enumeration 3배 적용
 ```
 
-#### Phase 2: MPNN 임베딩 추출
+#### Phase 2: D-MPNN 임베딩 추출
 ```python
-# ChemELon 사전학습 모델 기반 분자 임베딩
-- ChemELon Foundation Model (2048차원) + Fine-tuning
-- Message Passing: Bond-based with ChemELon weights
+# CheMeleon 사전학습 모델 기반 분자 임베딩
+- CheMeleon Foundation Model (2048차원) + Fine-tuning
+- Message Passing: Bond-based Directed MPNN with CheMeleon weights
 - Aggregation: Mean pooling
 - FFN: 2048 → 1024 → 512 → 256 → 1
 - 최종 임베딩: 256차원 (FFN 마지막 은닉층)
@@ -58,7 +59,7 @@ Score = 0.4 × (1 - min(A, 1)) + 0.6 × B
 #### Phase 3: CatBoost 최종 예측
 ```python
 # 임베딩 + 테이블 특징으로 최종 예측
-- 입력: MPNN 임베딩(256차원) + RDKit 특징(14차원) = 270차원
+- 입력: D-MPNN 임베딩(256차원) + RDKit 특징(14차원) = 270차원
 - 모델: CatBoost with sample weighting
 - CV: 5-Fold Stratified (pIC50 기반 그룹)
 ```
@@ -79,8 +80,8 @@ class CombinedBatchLoss:
 
 #### 2.2 차별화된 학습률 전략
 ```python
-# ChemELon과 FFN에 다른 학습률 적용
-- ChemELon 파라미터: base_lr × 0.01 (미세조정)
+# CheMeleon과 FFN에 다른 학습률 적용
+- CheMeleon 파라미터: base_lr × 0.01 (미세조정)
 - FFN 파라미터: base_lr × 1.0 (적극적 학습)
 - Warmup: 2 epochs with linear scheduling
 ```
@@ -105,9 +106,9 @@ def calculate_sample_weights(y):
 
 ### 3. 모델 구성 세부사항
 
-#### 3.1 MPNN Architecture
+#### 3.1 D-MPNN Architecture
 ```python
-# Message Passing (ChemELon)
+# Directed Message Passing (CheMeleon)
 - Input: Bond features + Atom features
 - Hidden: 2048차원
 - Depth: 5 layers
@@ -117,7 +118,7 @@ def calculate_sample_weights(y):
 # Feed-Forward Network
 - Architecture: [2048, 1024, 512, 256, 1]
 - Dropout: 0.3
-- Batch Norm: False (ChemELon과 충돌 방지)
+- Batch Norm: False (CheMeleon과 충돌 방지)
 ```
 
 #### 3.2 CatBoost Hyperparameters
@@ -125,14 +126,14 @@ def calculate_sample_weights(y):
 {
     'iterations': 300,
     'learning_rate': 0.08,
-    'depth': 7,
-    'l2_leaf_reg': 5,
-    'min_data_in_leaf': 20,
-    'random_strength': 0.5,
-    'bagging_temperature': 0.7,
+    'depth': 7,  # 과적합 방지를 위한 깊이 제한
+    'l2_leaf_reg': 5,  # L2 정규화로 일반화 성능 향상
+    'min_data_in_leaf': 20,  # 리프 노드 최소 샘플 수
+    'random_strength': 0.5,  # 랜덤성 추가로 과적합 방지
+    'bagging_temperature': 0.7,  # 부트스트랩 샘플링 온도
     'border_count': 128,
-    'grow_policy': 'Lossguide',
-    'max_leaves': 64
+    'grow_policy': 'Lossguide',  # 손실 기반 트리 성장
+    'max_leaves': 64  # 최대 리프 수 제한
 }
 ```
 
@@ -171,6 +172,10 @@ Public LB Score: 0.5689
 | exp3 | +AutoGluon Meta | 0.279 | 0.300 | AutoGluon 메타 모델 (부적합) |
 | exp6 | MPNN Embedding+Tree | 0.473 | 0.535 | 임베딩 + Tree 모델 결합 |
 | **exp7** | **+Weighted Loss+SMILES Aug** | **0.451** | **0.569** | **고활성 가중치 + 선택적 증강** |
+| exp8-15 | 다양한 개선 시도 | - | 0.3~0.5 | Scaffold 편향, 다른 증강 방법 등 |
+| exp16 | exp7 기반 추가 실험 | - | - | CV 문제로 중단 |
+
+**결론**: exp7의 가중치 손실 함수와 선택적 SMILES 증강이 가장 효과적
 
 ## 🔍 핵심 인사이트
 
@@ -180,14 +185,15 @@ Public LB Score: 0.5689
 - **결과**: 훈련 데이터의 고활성 분자 예측 정확도 100% 달성
 
 ### 2. 3단계 파이프라인의 효과
-- **MPNN 임베딩**: 분자 구조의 deep representation 학습
+- **D-MPNN 임베딩**: 분자 구조의 deep representation 학습
 - **RDKit Features**: 화학적 특성의 explicit encoding  
 - **CatBoost**: 비선형 관계 포착 및 robust prediction
 - **시너지**: 임베딩+테이블 특징 결합으로 성능 향상
 
-### 3. ChemELon Transfer Learning
+### 3. CheMeleon Transfer Learning
+- **Chemprop 공식 추천 모델**: [CheMeleon Foundation Model](https://chemprop.readthedocs.io/en/latest/chemeleon_foundation_finetuning.html)
 - **사전학습 활용**: 2048차원의 풍부한 분자 표현
-- **차별화된 학습률**: ChemELon 0.01x, FFN 1.0x
+- **차별화된 학습률**: CheMeleon 0.01x, FFN 1.0x
 - **효과**: 과적합 방지하면서도 task-specific 학습 가능
 
 ## 📁 디렉토리 구조
@@ -203,7 +209,7 @@ MAP3K5_JumpAI2025_Competition/
 │   ├── MPNN_Embedding_DataAG.ipynb    # 최종 솔루션 (Jupyter)
 │   ├── MPNN_Embedding_DataAG.py       # 최종 솔루션 (Python)
 │   ├── best_catboost_model.cbm        # 학습된 CatBoost 모델
-│   └── best_chemprop_model.pt         # 학습된 MPNN 모델
+│   └── best_chemprop_model.pt         # 학습된 D-MPNN 모델
 ├── data_transform.ipynb               # 데이터 전처리
 ├── 참고논문/                           # 참고 논문
 │   ├── MPNN.pdf
@@ -245,18 +251,21 @@ jupyter notebook MPNN_Embedding_DataAG.ipynb
 
 ## 📚 참고 문헌
 
-1. **MPNN (Message Passing Neural Networks)**
+1. **D-MPNN (Directed Message Passing Neural Networks)**
+   - Yang et al., "Analyzing Learned Molecular Representations for Property Prediction", JCIM 2019
    - Gilmer et al., "Neural Message Passing for Quantum Chemistry", ICML 2017
 
 2. **ChemProp**
    - Yang et al., "Analyzing Learned Molecular Representations for Property Prediction", JCIM 2019
+   - [Chemprop Documentation](https://chemprop.readthedocs.io/)
 
 3. **Scaffold Hopping**
    - Sun et al., "Recent Advances in Scaffold Hopping", Expert Opinion 2017
    - Recent Applications in CNS Drug Discovery, 2022
 
 4. **Transfer Learning in Drug Discovery**
-   - ChemELon: Large-scale molecular property prediction
+   - [CheMeleon Foundation Model](https://chemprop.readthedocs.io/en/latest/chemeleon_foundation_finetuning.html) - Chemprop 공식 문서
+   - Large-scale molecular property prediction
 
 ---
 *이 프로젝트는 Jump AI 2025 제3회 AI 신약개발 경진대회 참가작입니다.*

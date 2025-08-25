@@ -14,7 +14,7 @@ venv/
 
 # Data files
 *.csv
-!train_dataset_final_pIC50.csv
+!train_dataset_with_3source.csv
 !test.csv
 !sample_submission.csv
 
