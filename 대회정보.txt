@@ -1,0 +1,174 @@
+[배경]
+AI 신약개발 생태계 활성화와 AI 신약 개발 젊은 연구원들의 의욕 고취 및 인재 유입을 위해 
+'Jump AI 2025 : 제 3회 AI 신약개발 경진대회'를 개최합니다.
+
+
+[주제]
+MAP3K5 IC50 활성값 예측 모델 개발
+
+
+[설명]
+PubChem, ChEMBL, CAS 등에서 수집한 실험 기반 화합물 정보를 기반으로 IC50값 예측모델 개발
+
+127종 화합물의 구조 정보를 입력값으로 사용하여 해당 화합물들의 ASK1에 대한 IC50 값을 예측하여 제출
+
+1. 리더보드
+평가 산식
+A = IC50(nM) 단위의 Normalized RMSE 오차, 예측 정확도 측정
+
+
+B = pIC50 변환값을 기준으로 한 예측값과 실제값 간의 선형 상관관계의 제곱
+
+
+Score = 0.4 x (1 - min(A, 1)) + 0.6 x B
+
+
+Public score : 전체 테스트 데이터 중 사전 샘플링된 40%
+Private score : 전체 테스트 데이터 중 나머지 60%
+
+4. 대회 규칙
+1) 사전 학습 모델 사용 가능 범위
+
+2025년 7월 7일 전(~2025.07.06)에 공식적으로 가중치가 공개되었으며, 최소 비상업적 이용이 허용된 오픈소스 라이선스 (예:MIT,Apache 2.0 등)로 배포된 사전학습 모델 및 가중치만 사용 가능합니다.
+해당 조건을 충족하지 않는 모델과 가중치는 사용할 수 없습니다.
+2) API 사용 제한
+
+원격 서버를 통해서만 접근 가능한 API 형태의 모델(예:OpenAI API, Gemini API 등)은 사용이 불가능합니다.
+모든 모델은 로컬 환경에서 직접 실행이 가능해야하며, 외부 서버에 의존하는 방식은 허용되지 않습니다.
+3) 외부 데이터 사용 허용 범위
+
+외부 데이터 사용을 허용합니다.
+2025년 7월 7일 전(~2025.07.06)에 공식적으로 공개되었으며, 최소한 비상업적 이용이 허용된 라이선스(CC BY-NC, CC0 등)로 배포된 외부 데이터만 사용할 수 있습니다. 해당 조건을 충족하지 않는 외부 데이터는 사용이 불가능합니다.
+모든 외부 데이터는 출처, 사용 방식, 데이터 파일 등 증빙이 가능해야 하며, 이에 대한 확인이 이루어지지 않을 경우 실격 처리될 수 있습니다.
+4) 외부 도구 및 소프트웨어 사용 범위
+
+외부 도구 및 소프트웨어는 최소 비상업적 이용이 허용된 오픈소스 라이선스(예:MIT,Apache 2.0 등) 하에 배포된 것만 사용 가능합니다.
+해당 조건을 충족하지 않는 도구 및 소프트웨어는 사용할 수 없습니다.
+
+Dataset Info.
+
+CAS_KPBMA_MAP3K5_IC50.xlsx
+CAS에서 수집한 MAP3K5(ASK1) 관련 화합물 리스트
+Ligand Number : 화합물 번호
+Substance Name : 물질명
+SMILES : 분자구조
+등 총 20개 컬럼
+
+CAS_KPBMA_MAP3K5_IC50s.xlsx 내부의 3가지 시트
+
+[Ligand Number Names SMILES]
+컬럼명 : Ligand Number / Substance Name / SMILES / Stereo Attribute Note
+1, 5′-ATP, O[C@H]1[C@H](N2C=3C(N=C2)=C(N)N=CN3)O[C@H](COP(OP(OP(=O)(O)O)(=O)O)(=O)O)[C@H], 1O	
+2, ...
+
+
+[ MAP3K5 Ligand IC50s ]
+컬럼명 : Substance Name/	Source Type/	Document Identifier/	SMILES/	Assay Name/	Measurement Function/	Assay Parameter/	Display Measurement/	Measurement Prefix (Parsed)/	Single Value (Parsed)/	Low-End Value (Parsed)/	High-End Value (Parsed)/	Measurement Unit/	 pX Value/	Cell Line/	Species/	Disease
+
+5′-ATP	journal	Chem. Biol., 2011, 18 (6), 699-710	O[C@H]1[C@H](N2C=3C(N=C2)=C(N)N=CN3)O[C@H](COP(OP(OP(=O)(O)O)(=O)O)(=O)O)[C@H]1O		Inhibitor	IC50	2.43333 µM		2.43333			µM	5.6138	HL-60	HOMO SAPIENS	
+
+...
+
+N-[3-[[3-Ethyl-5-[2-(2-hydroxyethyl)-1-piperidinyl]pyrazolo[1,5-a]pyrimidin-7-yl]amino]phenyl]-2-propenamide	patent	Gray (Dana-Farber Cancer Institute, Inc.), US 10,550,121 B2	C(C)C1=C2N(C(NC3=CC(NC(C=C)=O)=CC=C3)=CC(=N2)N4C(CCO)CCCC4)N=C1		Inhibitor	IC50	1.09 µM		1.09			µM	5.96257			acute lymphoblastic leukemia
+...
+
+
+[ Data Dictionary ]
+<Ligand Number Names SMILES sheet	>
+- Ligand Number
+A reference number to match substances to the separate .svg image files
+
+- Substance Name
+Chemical name of substance, can be used as a key to match information in the "Ligand Number Names SMILES" sheet to the "MAP3K5 Ligand IC50s" sheet
+
+-SMILES
+Chemical structure string,  can also be used as a key to match information in the "Ligand Number Names SMILES" sheet to the "MAP3K5 Ligand IC50s" sheet when Substance Name is blank
+
+-Stereo Attribute Note
+Chemical stereo structure note
+
+<MAP3K5 Ligand IC50s sheet>
+- Substance Name
+Chemical name of substance, can be used as a key to match information in the "Ligand Number Names SMILES" sheet to the "MAP3K5 Ligand IC50s" sheet
+
+- Source Type
+Type of source material, Journal or Patent
+
+- Document Identifier
+Source material identification string, doi, patent number
+
+- SMILES
+Chemical structure string,  can also be used as a key to match information in the "Ligand Number Names SMILES" sheet to the "MAP3K5 Ligand IC50s" sheet when Substance Name is blank
+
+- Assay Name
+Author given name of the assay used to measure thee IC50
+
+- Measurement Function
+Defines the type of target modulation (inhibitor, activator, modulator); EC50s with this field indicating Inhibitor are considered IC50s
+
+- Assay Parameter
+Parameter or bioactivity name given to the value being measured, IC50 or EC50 (EC50 with inhibitor designation)
+
+- Display Measurement
+Measured IC50 value and units 
+
+- Measurement Prefix (Parsed)
+For the measured value this field gives a value modifier where available, equals, less than, greater than
+
+- Single Value (Parsed)
+A single measured value (number) for the IC50
+
+- Low-End Value (Parsed)
+The lowest measured value in a range of values for an IC50
+
+- High-End Value (Parsed)
+The highest measured value in a range of values for an IC50
+
+- Measurement Unit (Parsed)
+Unit of measure used for all values
+
+- pX Value
+-log(molar concentration of IC50)
+
+- Cell Line
+Type of tissue culture cells used for the assay
+
+- Experimental Environment
+Whether the assay was carried out in vitro, in vivo, or unknown/not recorded
+
+- Species
+Animal species used in assay
+
+- Diseases
+Relative disease for which substance is known or expected to be efficatious
+
+
+---
+
+
+ChEMBL_ASK1(IC50).csv
+ChEMBL에서 수집된 ASK1 효소 저해 관련 실험 결과 824종
+
+"Molecule ChEMBL ID";"Molecule Name";"Molecule Max Phase";"Molecular Weight";"#RO5 Violations";"AlogP";"Compound Key";"Smiles";"Standard Type";"Standard Relation";"Standard Value";"Standard Units";"pChEMBL Value";"Data Validity Comment";"Comment";"Uo Units";"Ligand Efficiency BEI";"Ligand Efficiency LE";"Ligand Efficiency LLE";"Ligand Efficiency SEI";"Potential Duplicate";"Assay ChEMBL ID";"Assay Description";"Assay Type";"BAO Format ID";"BAO Label";"Assay Organism";"Assay Tissue ChEMBL ID";"Assay Tissue Name";"Assay Cell Type";"Assay Subcellular Fraction";"Assay Parameters";"Assay Variant Accession";"Assay Variant Mutation";"Target ChEMBL ID";"Target Name";"Target Organism";"Target Type";"Document ChEMBL ID";"Source ID";"Source Description";"Document Journal";"Document Year";"Cell ChEMBL ID";"Properties";"Action Type";"Standard Text Value";"Value"
+"CHEMBL3927617";"";"None";"359.81";"0";"2.68";"BDBM128413";"Cn1cc(Cl)c2cnc(NC(=O)c3ccc([C@](C)(O)CO)cc3)cc21";"IC50";"'='";"38.0";"nM";"7.42";"";"259344";"UO_0000065";"20.62";"0.41";"4.74";"8.49";"0";"CHEMBL3705948";"Homogeneous Time-Resolved Fluorescence Assay: The inhibitory properties of compounds to ASK1 may be determined using a white 384-well-plate format under the following reaction conditions: 25 nM ASK1, 1 uM CisBio STK S3-biotion peptide, 100 uM ATP, and 1%-2% DMSO in kinase assay buffer of 50 mM HEPES, pH 7.3, 10 mM NaCl, 10 mM MgCl2, 0.01% Brij35, 0.2 mM EDTA, and 1 mM DTT. Reaction product is determined quantitatively by HTRF after the addition of detection reagent SA-XL665 and STK-antibody-cryptate.The assay reaction may be initiated as follows: 2 ul of the mixture of 3 uM CisBio STK S3-biotion peptide and 300 uM ATP with 2 ul of test compound (2 fold serial dilutions for 11 data points for each inhibitor) containing 3%-6% DMSO are added to each well of the plate, followed by the addition of 2 uL of 75 nM ASK1 to initiate the reaction (final enzyme concentration was 25 nM for ASK1). The reaction mixture may then be incubated at room temperature for 1 hour, and quenched and developed.";"B";"BAO_0000357";"single protein format";"None";"None";"None";"None";"None";"";"";"";"CHEMBL5285";"Mitogen-activated protein kinase kinase kinase 5";"Homo sapiens";"SINGLE PROTEIN";"CHEMBL3639127";"37";"BindingDB Patent Bioactivity Data";"";"2014";"None";"";"";"";"38.0"
+...
+
+---
+
+PubChem_ASK1.csv
+PubChem에서 수집된 ASK1 저해 활성 정보
+
+Bioactivity_ID,Activity_Value,BioAssay_AID,Substance_SID,Compound_CID,refsid,Gene_ID,PMID,Aid_Type,Last_Modified_Date,Has_Dose_Response_Curve,RNAi_BioAssay,Activity,Protein_Accession,Activity_Type,Activity_Qualifier,Bioassay_Data_Source,BioAssay_Name,Compound_Name,Target_Name,Target_Link,ECs,Representative_Protein_Accession,Taxonomy_ID,Cell_ID,Target_Taxonomy_ID,Anatomy_ID,Anatomy,dois,pmcids,pclids,citations,SMILES
+363645869,0.0001,1404085,404713175,145990765,,4217,29348070,Confirmatory,20220830,0,0,Active,Q99683,IC50,=,ChEMBL,Inhibition of recombinant full length human GST-tagged ASK1 expressed in baculovirus expression system using STK3 peptide substrate preincubated for 15 mins followed by substrate addition measured after 90 mins in presence of 1 mM ATP by HTRF assay,"2-methoxy-4-methyl-N-[6-(4-propan-2-yl-1,2,4-triazol-3-yl)pyridin-2-yl]-5-sulfamoylbenzamide",MAP3K5 - mitogen-activated protein kinase kinase kinase 5 (human),/gene/4217,2.7.11.25,Q99683,9606,,,,,10.1016/j.ejmech.2017.12.041,,29725507,"Lovering F, Morgan P, Allais C, Aulabaugh A, Brodfuehrer J, Chang J, Coe J, Ding W, Dowty H, Fleming M, Frisbie R, Guzova J, Hepworth D, Jasti J, Kortum S, Kurumbail R, Mohan S, Papaioannou N, Strohbach JW, Vincent F, Lee K, Zapf CW. Rational approach to highly potent and selective apoptosis signal-regulating kinase 1 (ASK1) inhibitors. European Journal of Medicinal Chemistry. 2018 Feb;145():606–21. doi: 10.1016/j.ejmech.2017.12.041.",CC1=CC(=C(C=C1S(=O)(=O)N)C(=O)NC2=CC=CC(=N2)C3=NN=CN3C(C)C)OC
+...
+
+---
+
+test.csv [파일]
+ID : 고유 ID
+Smies : 분자구조 데이터
+
+
+sample_submission.csv [파일] - 제출 양식
+ID : 고유 ID
+ASK1_IC50_nM : 예측한 IC50(nM단위)

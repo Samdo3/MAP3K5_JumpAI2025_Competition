@@ -1,0 +1,961 @@
+데이터 처리 우선 (data_transform.ipynb)
+CAS_KPBMA_MAP3K5_IC50s.xlsx, ChEMBL_ASK1(IC50).csv, Pubchem_ASK1.csv -> train_dataset_final_pIC50.csv
+각 3개의 엑셀 파일에서 SMILES와 pIC50 컬럼들만 따로 빼서 추출 [ 'SMILES', 'pIC50' ]
+=> 업그레이드 할때 다른 컬럼들도 추가해서 해보면 좋을듯
+
+--- 1. Processing CAS data ---
+✅ CAS: Found 3430 entries.
+
+--- 2. Processing ChEMBL data (Corrected) ---
+✅ ChEMBL: Found 714 entries using 'pChEMBL Value'.
+
+--- 3. Processing PubChem data (Corrected) ---
+✅ PubChem: Found 1148 entries using 'Activity_Value'.
+
+--- 4. Combining all data sources ---
+- Total entries before deduplication: 5292
+- Final unique training entries: 3834
+
+최종 제출까지의 완벽한 계획
+1단계: 모델 학습 (SMILES → pIC50 예측)
+입력 (X): SMILES (분자 구조)
+타겟 (y): pIC50 (pX Value)
+
+2단계: 예측 및 제출 (pIC50 → IC50 (nM) 변환)
+모델이 예측한 pIC50 값을 IC50 (nM) 단위로 다시 변환해주는 과정이 반드시 필요합니다.
+변환 공식: pIC50=9−log10​(IC50nM)
+
+전체 흐름 요약
+1. 훈련: (SMILES, pIC50) 데이터를 사용해 모델을 학습시킨다.
+2. 예측: test.csv의 SMILES로 pIC50 값을 예측한다.
+3. 변환: 예측된 pIC50 값을 10^(9−pIC50)공식으로 IC50 (nM) 값으로 변환한다.
+4. 제출: 변환된 IC50 (nM) 값을 sample_submission.csv 형식에 맞춰 최종 제출한다.
+
+실험 1. 비슷한 대회 CYP3A4 솔루션인 D-MPNN 코드 그대로 사용해보기
+
+   {'name': 'hp_0623cf3a', 'hidden': '565', 'depth': '9', 'dropout': '0.15715483946291015', 'ffn_hidden': '643', 'ffn_layers': '2', 'feats': '', 'seed': '42'}
+   {'name': 'hp_9f345ccd', 'hidden': '548', 'depth': '7', 'dropout': '0.23812370790284998', 'ffn_hidden': '887', 'ffn_layers': '2', 'feats': '', 'seed': '42'}
+   {'name': 'hp_48556f9c', 'hidden': '632', 'depth': '9', 'dropout': '0.17281739835005594', 'ffn_hidden': '560', 'ffn_layers': '3', 'feats': '', 'seed': '42'}
+   {'name': 'hp_473bf10c', 'hidden': '551', 'depth': '5', 'dropout': '0.0851426723173135', 'ffn_hidden': '1301', 'ffn_layers': '2', 'feats': '', 'seed': '42'}
+   {'name': 'hp_a958a8a4', 'hidden': '609', 'depth': '5', 'dropout': '0.08510652055118963', 'ffn_hidden': '358', 'ffn_layers': '2', 'feats': '', 'seed': '42'}
+[INFO] TOP‑5 base models by OOF RMSE:
+ • hp_473bf10c  : 0.28878
+ • hp_0623cf3a  : 0.29469
+ • hp_a958a8a4  : 0.29743
+ • hp_48556f9c  : 0.31739
+ • hp_9f345ccd  : 0.32468
+
+[META-LGBM] Stratified‑CV RMSE = 0.33632
+[META-XGB] Stratified‑CV RMSE = 0.28866
+[META-CatBoost] Stratified‑CV RMSE = 0.28823
+
+[Post-Processing] OOF Scores:
+  - Raw Prediction Score: 0.96811
+  - Linear Calibrated Score: 0.96817
+  - Isotonic Calibrated Score: 0.96924
+[SELECT] Best method is 'iso' with OOF score: 0.96924
+
+LB = 0.41848 (3등)
+
+
+실험 2. 3개의 각 데이터의 출처를 표시하는 source 피처를 추가 => train_dataset_with_source.csv
+
+출처 표시한 상태로 다시 D-MPNN 모델 학습 + 메타모델 학습에도 출처 표시
+
+[INFO] TOP‑5 base models by OOF RMSE:
+ • hp_19b0c652  : 0.27562
+ • hp_a4639e0a  : 0.31098
+ • hp_2d170513  : 0.32097
+ • hp_1232eaae  : 0.32729
+ • hp_47e0272b  : 0.36745
+
+[META-LGBM] Stratified‑CV RMSE = 0.34055
+[META-XGB] Stratified‑CV RMSE = 0.27838
+[META-CatBoost] Stratified‑CV RMSE = 0.28541
+
+[META] 선택 모델 = XGB (RMSE 0.27838)
+
+[Post-Processing] OOF Scores:
+  - Raw Prediction Score: 0.96833
+  - Linear Calibrated Score: 0.96843
+  - Isotonic Calibrated Score: 0.97036
+
+[SELECT] Best method is 'iso' with OOF score: 0.97036
+
+LB =0.3786622653
+
+=> BAD, 다른 실험도 그렇고, 다른 피처를 추가해서 학습시키면 점수가 떨어짐!
+
+실험 2.5 그럼 메타 모델 학습에는 source 빼고, MPNN 학습할때만 피처로 넣어서 해보자.
+( 07_07_MPNN_v3.ipynb 로 교체 후 실행 )
+=> 지금 돌리고 있는거
+
+[CHECK] Avg leaf per tree ≈ 8.0
+[FINAL] CV RMSE = 0.28397
+
+[SELECT] q-spline chosen  (Score 0.98259)
+
+LB = 0.3744247287
+
+
+실험 3. Autogloune 적용 ( exp3/MPNN_autogluon.ipynb )
+=> exp3/meta_output 폴더에 저장된게 최적화된 코드(150trial,100epoch)의 체크포인트임(source X)
+[INFO] TOP-5 base models:
+ • hp_7be1971a   0.27901
+ • hp_fec31a08   0.32962
+ • hp_bc3c27bc   0.33570
+ • hp_550e0f59   0.37945
+ • hp_6854477b   0.44770
+[INFO] stacking train shape (3834, 5)
+
+
+model	score_test	score_val	eval_metric	pred_time_test	pred_time_val	fit_time	pred_time_test_marginal	pred_time_val_marginal	fit_time_marginal	stack_level	can_infer	fit_order
+0	WeightedEnsemble_L2	0.972481	0.970993	competition_score	0.998124	0.185342	421.923182	0.003175	0.001311	0.356477	2	True	4
+1	NeuralNetFastAI_r191_BAG_L1	0.972422	0.970290	competition_score	0.390400	0.062835	67.161494	0.390400	0.062835	67.161494	1	True	2
+2	NeuralNetFastAI_r11_BAG_L1	0.972327	0.969938	competition_score	0.488449	0.085034	68.303753	0.488449	0.085034	68.303753	1	True	3
+3	NeuralNetTorch_r79_BAG_L1	0.968703	0.968215	competition_score	0.116100	0.036162	286.101459	0.116100	0.036162	286.101459	1	True	1
+
+BASE
+
+LB = 0.3000717301  (BAD)
+
+실험 4. autogluon 안쓰고 최적화 코드 그대로 써보기
+
+=== Post‑Processing Summary ===
+raw    | Score=0.96693 | bias=0.0001  std=0.2640
+lin    | Score=0.96705 | bias=0.0000  std=0.2640
+iso    | Score=0.97390 | bias=-0.0000  std=0.2531
+blend  | Score=0.95822 | bias=-0.0144  std=0.3019
+qs     | Score=0.96731 | bias=0.0041  std=0.2621
+
+[SELECT] Best method → 'iso'  (OOF 0.97390)
+
+LB= 0.3221354846
+=> 이건 그냥 바뀐 코드 자체가 문제다.
+
+실험 5. 원래 코드로 돌아가서 autogluon
+
+model	score_test	score_val	eval_metric	pred_time_test	pred_time_val	fit_time	pred_time_test_marginal	pred_time_val_marginal	fit_time_marginal	stack_level	can_infer	fit_order
+0	KNeighborsDist_BAG_L1	0.989173	0.948443	competition_score	0.027737	0.034917	0.005062	0.027737	0.034917	0.005062	1	True	2
+1	KNeighborsDist_BAG_L1_FULL	0.989173	NaN	competition_score	0.039416	0.034917	0.005062	0.039416	0.034917	0.005062	1	True	33
+2	RandomForest_r195_BAG_L1	0.984953	0.954401	competition_score	0.208275	0.197455	1.362483	0.208275	0.197455	1.362483	1	True	24
+3	RandomForest_r195_BAG_L1_FULL	0.984953	NaN	competition_score	0.221867	0.197455	1.362483	0.221867	0.197455	1.362483	1	True	55
+4	ExtraTreesMSE_BAG_L1	0.984919	0.954673	competition_score	0.151512	0.183984	0.691680	0.151512	0.183984	0.691680	1	True	7
+...	...	...	...	...	...	...	...	...	...	...	...	...	...
+57	NeuralNetTorch_BAG_L1_FULL	0.955014	NaN	competition_score	0.017565	NaN	13.187487	0.017565	NaN	13.187487	1	True	41
+58	WeightedEnsemble_L2_FULL	0.951276	NaN	competition_score	0.120482	NaN	7.178197	0.004138	NaN	0.343807	2	True	62
+59	NeuralNetFastAI_r102_BAG_L1_FULL	0.947396	NaN	competition_score	0.022454	NaN	0.354000	0.022454	NaN	0.354000	1	True	53
+60	NeuralNetTorch_r30_BAG_L1_FULL	0.938910	NaN	competition_score	0.022648	NaN	15.769195	0.022648	NaN	15.769195	1	True	59
+61	NeuralNetFastAI_r191_BAG_L1_FULL	0.927274	NaN	competition_score	0.047525	NaN	2.009126	0.047525	NaN	2.009126	1	True	46
+
+LB = 0.3904184929
+=> 메타 모델 선택으로 Autogluon이 별로임
+
+실험 6. D-MPNN으로 임베딩 가중치 뽑고 그걸 트리모델에 특징으로 줘서 학습시키기
+
+일반화가 가장 중요!!
+
+
+==================================================
+모델: LightGBM
+==================================================
+
+평균 RMSE: 0.4885 ± 0.0231
+평균 R2: 0.8166 ± 0.0164
+
+==================================================
+모델: XGBoost
+==================================================
+
+평균 RMSE: 0.4820 ± 0.0227
+평균 R2: 0.8212 ± 0.0176
+
+==================================================
+모델: CatBoost
+==================================================
+
+평균 RMSE: 0.4730 ± 0.0353
+평균 R2: 0.8274 ± 0.0248
+
+==================================================
+모델: RandomForest
+==================================================
+
+평균 RMSE: 0.4851 ± 0.0286
+평균 R2: 0.8188 ± 0.0209
+
+
+==================================================
+모델: ExtraTrees
+==================================================
+
+평균 RMSE: 0.4750 ± 0.0248
+평균 R2: 0.8264 ± 0.0181
+
+Competition Score: 0.8740 (A: 0.9517, B: 0.8222)
+
+LB = 0.5352035623	
+
+
+CAT 단독으로 + 파라미터 변경
+cat_params = {
+    'iterations': 500,
+    'learning_rate': 0.05,
+    'depth': 6,
+    'l2_leaf_reg': 3,
+    'random_state': SEED,
+    'verbose': False,
+    'early_stopping_rounds': 50,
+    'task_type': 'CPU',  # GPU 사용시 'GPU'로 변경
+    'loss_function': 'RMSE',
+    'eval_metric': 'RMSE',
+}
+
+평균 CV RMSE: 0.4698 ± 0.0432
+평균 CV R2: 0.8284 ± 0.0376
+Competition Score: 0.8783 (A: 0.9514, B: 0.8297)
+
+OOF 예측
+고활성 분자 예측 성능:
+pIC50 > 10인 17개 중 13개 정확히 예측
+pIC50 > 11인 17개 중 13개 정확히 예측
+
+핵심 분자 예측값:
+          ID  ASK1_IC50_nM
+15  TEST_015     69.839340
+16  TEST_016    118.494993
+17  TEST_017    426.126292
+
+핵심 분자 평균 pIC50: 6.82
+
+테스트 예측 pIC50 분포:
+평균: 7.12
+표준편차: 0.35
+최소값: 6.14
+최대값: 7.92
+pIC50 > 10 예측: 0개
+pIC50 > 11 예측: 0개
+
+LB = 0.5494571611
+
+실험 7. 고활성 분자쪽 더 패널티 + RDKIT의 SMILES Enumeration으로 고활성 분자들만 데이터 증강
+
+SMILES Enumeration은 분자를 변형해서 새로운 분자를 만드는게 아니라,
+분자의 다양한 표현식을 열거('Enumeration')해서 데이터에 추가하는 것.
+
+평균 CV RMSE: 0.4507 ± 0.0226
+평균 CV R2: 0.9484 ± 0.0055
+Competition Score: 0.9506 (A: 0.9535, B: 0.9488)
+
+고활성 분자 예측 성능:
+pIC50 > 10인 357개 중 357개 정확히 예측
+pIC50 > 11인 357개 중 355개 정확히 예측
+
+핵심 분자 예측값:
+          ID  ASK1_IC50_nM
+15  TEST_015     52.019857
+16  TEST_016     58.628702
+17  TEST_017    149.951879
+
+핵심 분자 평균 pIC50: 7.11
+
+예측 pIC50 분포:
+평균: 7.19
+표준편차: 0.36
+최소값: 6.04
+최대값: 7.82
+pIC50 > 10 예측: 0개
+pIC50 > 11 예측: 0개
+
+=> 20배로 하니까 train에 너무 과적합
+
+<num_versions=10배 + dropout 0.3>
+핵심 분자 예측값:
+          ID  ASK1_IC50_nM
+15  TEST_015     67.560935
+16  TEST_016    130.311049
+17  TEST_017    171.408914
+
+핵심 분자 평균 pIC50: 6.94
+
+예측 pIC50 분포:
+평균: 7.14
+표준편차: 0.32
+최소값: 6.26
+최대값: 8.03
+pIC50 > 10 예측: 0개
+pIC50 > 11 예측: 0개
+
+=> 최대값 조금 올라감
+
+< num_versions= 3배 >
+
+핵심 분자 예측값:
+          ID  ASK1_IC50_nM
+15  TEST_015    139.009118
+16  TEST_016    241.013925
+17  TEST_017    291.270876
+
+핵심 분자 평균 pIC50: 6.67
+
+예측 pIC50 분포:
+평균: 6.99
+표준편차: 0.34
+최소값: 6.11
+최대값: 7.88
+pIC50 > 10 예측: 0개
+pIC50 > 11 예측: 0개
+
+=> 핵심 분자 예측값들이 많이 늘어남.
+
+
+<이제 이 SMILES Enumeration 3배를 기준으로 mixup 적용하기>
+
+mixup으로 100개 정도 늘리니까 
+
+핵심 분자 예측값:
+          ID  ASK1_IC50_nM
+15  TEST_015    114.344189
+16  TEST_016    233.827447
+17  TEST_017    297.045499
+
+핵심 분자 평균 pIC50: 6.70
+
+예측 pIC50 분포:
+평균: 6.98
+표준편차: 0.36
+최소값: 6.04
+최대값: 8.04
+pIC50 > 10 예측: 0개
+pIC50 > 11 예측: 0개
+
+=> 여전히 TEST는 예측 분포가 9를 못 넘음.
+
+< 이제 Chemeleon 가중치 풀어버려서 학습률 내리고 학습시키기 >
+for param in mp.parameters():
+    param.requires_grad = True
+
+Shrink model to first 66 iterations.
+  RMSE: 0.4732, R2: 0.8782
+
+평균 CV RMSE: 0.3313 ± 0.0731
+평균 CV R2: 0.9356 ± 0.0292
+Competition Score: 0.9472 (A: 0.9650, B: 0.9353)
+
+
+핵심 분자 예측값:
+          ID  ASK1_IC50_nM
+15  TEST_015    124.586366
+16  TEST_016    245.420197
+17  TEST_017    288.574704
+
+핵심 분자 평균 pIC50: 6.68
+
+예측 pIC50 분포:
+평균: 6.67
+표준편차: 0.38
+최소값: 5.87
+최대값: 7.71
+pIC50 > 10 예측: 0개
+pIC50 > 11 예측: 0개
+
+=> RMSE는 많이 줄었는데, 여전히 예측 최대값이 8을 못넘음.
+=> 테스트 예측 범위가 8 이상을 못 넘는 이유가 도대체 뭘까???
+
+=> 그냥 테스트에서 고활성 분자가 없나?
+
+< has_key_scaffold 빼고 학습시키기 + CombinedBatchLoss >
+
+    combined_loss_fn = CombinedBatchLoss(
+        alpha=0.4, 
+        scaler=scaler, 
+        weight_configs={10: 5, 12: 10}
+    )
+
+핵심 분자 예측값:
+          ID  ASK1_IC50_nM
+15  TEST_015     61.178600
+16  TEST_016    320.316997
+17  TEST_017    313.659339
+
+핵심 분자 평균 pIC50: 6.74
+
+예측 pIC50 분포:
+평균: 7.11
+표준편차: 0.43
+최소값: 6.07
+최대값: 8.11
+pIC50 > 10 예측: 0개
+pIC50 > 11 예측: 0개
+
+제출 파일 생성 완료: submission_catboost.csv
+
+LB = 0.5689466683 (exp7)
+
+
+
+=> 지금까지 분석을 잘못해서 고활성 분자를 이상한 특성으로 힌트를 주고 있었음.
+=> '특정 스캐폴드 편향'을 제거하고, ECFP 특징 추가(부분 특징)
+=> 이유 : test 분자들은 train의 tail 구조는 유지하되, linker 부분만 다양하게 달라짐. -> 부분 특징을 잡고 고활성 예측하자.
+
+
+핵심 분자 예측값:
+           ID  ASK1_IC50_nM
+70   TEST_070     70.269333
+108  TEST_108     27.005302
+126  TEST_126     14.976940
+
+핵심 분자 평균 pIC50: 7.52
+
+예측 pIC50 분포:
+평균: 7.19
+표준편차: 0.47
+최소값: 5.99
+최대값: 8.19
+pIC50 > 10 예측: 0개
+pIC50 > 11 예측: 0개
+
+제출 파일 생성 완료: submission_catboost.csv
+
+=> 평균 예측은 늘었지만, 여전히 고활성을 예측 못함.
+
+특성 중요도 확인해보자.
+
+상위 20개 중요 특징:
+       feature  importance
+69    embed_69    3.587884
+776  embed_776    3.495004
+132  embed_132    3.482826
+835  embed_835    3.238570
+418  embed_418    3.154263
+434  embed_434    2.349230
+549  embed_549    2.262427
+357  embed_357    1.889726
+820  embed_820    1.574540
+757  embed_757    1.488956
+941  embed_941    1.420921
+149  embed_149    1.105164
+0      embed_0    1.084342
+167  embed_167    1.033841
+585  embed_585    1.026896
+581  embed_581    1.009259
+593  embed_593    0.990749
+337  embed_337    0.967674
+987  embed_987    0.962625
+610  embed_610    0.945566
+
+CatBoost 모델 저장 완료: best_catboost_model.cbm
+
+=> 모든 중요한 특징들이 전부 임베딩들임. '특정 임베딩 편향'
+=> Phase 2 미세조정은 D-MPNN이 "Scaffold A = 초고활성"이라는 패턴을 강력하게 학습하도록 만듭니다 (Phase 2 예측 최대값 12.99가 이를 증명).
+
+결과 : 임베딩 편향을 막기 위해 모든 방법을 사용해봄. 
+1. CAT 학습시 임베딩 가중치 최대한 줄이고, RDKIT 특징 가중치 100배까지 줘봤음. => 여전히 고활성 분자 예측 불가
+2. 임베딩 특징 PCA로 차원 축소 => 여전히 임베딩 특징이 영향력 너무 커서 ECFP, RDKIT특징이 무시됌
+3. Residual learning으로 out of fold로 임베딩 학습만으로 실제값과의 잔차를 구하고, ECFP, RDKIT 특징을 이용해서 잔차를 학습시킴
+=> 임베딩 특징 영향력 문제는 해결했으나, 여전히 고활성 분자를 해결 못함
+=> 그래서 제안된 실험. 고활성으로 예측되는 TEST 데이터 분자 하나를 일부로 pIC50=12으로 가정해서 훈련 데이터에 하나 넣고 학습시키기
+가정 1. 만약 여전히 고활성 분자를 못 찾는다? -> 내 모델이 학습을 잘못하고 있거나 다른 문제가 있는 것.
+가정 2. 만약 고활성 분자를 잘 찾고, 훈련 데이터에 줬던 TEST 분자 이외의 고활성으로 예상되는 TEST 분자의 활성도가 급격히 높아진다?
+-> 내 모델은 학습을 잘 하고 있던건데, 주어진 훈련 데이터 자체가 테스트 데이터의 고활성 분자와 전혀 다른 스캐폴드였던거임. 데이터 자체의 문제.
+
+결과 :
+
+핵심 분자 예측값:
+           ID  ASK1_IC50_nM
+70   TEST_070      0.000940
+108  TEST_108      0.088237
+126  TEST_126      0.098522
+
+핵심 분자 평균 pIC50: 10.70
+
+=== 힌트 실험 결과 분석 ===
+TEST_070 (힌트로 사용): pIC50 = 12.03 (실제 라벨: 12.0)
+TEST_108: pIC50 = 10.05
+TEST_126: pIC50 = 10.01
+
+TEST_108, TEST_126 평균 pIC50: 10.03
+✅ 성공! 힌트가 효과적이었습니다. Scaffold B 패턴을 학습했습니다!
+
+=> 실험 결과 가정 2가 맞았음!!
+
+## 결과가 증명하는 것: "일반화"의 성공
+결론적으로, 모델은 고활성 분자를 예측할 능력이 있었지만, 훈련 데이터에 '힌트'가 전혀 없어 그 능력을 발휘하지 못하고 있었던 것입니다.
+
+"힌트"의 효과 ("로제타 스톤" 역할): TEST_070에 pIC50=12.0이라는 가짜 라벨을 주고 훈련 데이터에 추가하자, 모델은 드디어 "Scaffold B"라는 새로운 화학 구조가 초고활성과 관련이 있다는 결정적인 연결고리를 학습했습니다. 이 단 하나의 샘플이 모델에게는 암호를 푸는 '로제타 스톤'과 같은 역할을 한 것입니다.
+
+"암기"를 넘어선 "일반화"의 증거: 가장 중요한 점은, 모델이 단순히 힌트로 주어진 TEST_070만 높게 예측한 것이 아니라는 사실입니다. 한 번도 본 적 없는 TEST_108과 TEST_126의 pIC50 값까지 10.0 이상으로 예측한 것이 그 강력한 증거입니다. 이는 모델이 Scaffold B의 패턴을 '암기'한 것을 넘어, 동일한 패턴을 가진 다른 분자들에게까지 그 지식을 '일반화'하고 '응용'하는 데 성공했음을 의미합니다.
+
+그래프가 보여주는 명백한 변화:
+
+예측 분포의 변화 (오른쪽 위): 이전까지 7점대에 모든 예측이 몰려있던 파란색 막대(Test Predictions)가, 이제는 훈련 데이터(녹색 막대)처럼 10점대와 12점대에 새로운 봉우리를 형성했습니다. 모델이 드디어 고활성 값을 예측하기 시작한 것입니다.
+
+Box Plot의 극적인 변화 (오른쪽 아래): 이전에는 8.0을 넘지 못했던 Test Predictions의 Box Plot이 이제는 중앙값과 상단 경계가 모두 10.0 근처까지 극적으로 상승했습니다. TEST_070과 TEST_108이 높은 이상치로 정확하게 예측된 것을 시각적으로 확인할 수 있습니다.
+
+(exp8/MODEL_TEST.ipynb에서 결과 확인 가능)
+
+
+=> 스캐폴드 다른 패턴을 학습시켜 일반화하기 위한 방법 : amide bioisosteres
+
+핵심 코어인 Tail 부분이 (이소프로필)-트리아졸-피리딘으로 같으니까
+그 뒤의 linker 부분만 다르게 바꿔서 고활성 분자들을 데이터 증강 시키자. => 고활성 분자는 linker가 변경되어도 고활성일 것이라는 가정
+
+exp9 -> 이게 amide bioisosteres 증강을 해주고, ECFP, RDKIT 특징을 Chemprop 기능을 이용해 학습할때 추가해서 학습
+
+LB = 0.2998563789	 -> 내가 볼때는 추가 특징을 주고 학습시켜서 이상해진것 같음.
+
+
+exp10 -> 그래서 ECFP, RDKIT 특징을 D-MPNN 학습때 줬던걸 빼봤음.
+
+평균 CV RMSE: 0.4816 ± 0.0038
+평균 CV R2: 0.9267 ± 0.0048
+Competition Score: 0.9364 (A: 0.9503, B: 0.9271)
+
+핵심 분자 예측값:
+           ID  ASK1_IC50_nM
+70   TEST_070     55.814704
+108  TEST_108     31.375832
+126  TEST_126     31.849441
+
+핵심 분자 평균 pIC50: 7.42
+
+예측 pIC50 분포:
+평균: 7.41
+표준편차: 0.52
+최소값: 6.41
+최대값: 10.01
+pIC50 > 10 예측: 1개
+pIC50 > 11 예측: 0개
+
+제출 파일 생성 완료: submission_catboost.csv
+
+=> 처음으로 10 넘게 예측을 했음!!
+
+특징 개수: 1043
+중요도 개수: 1043
+X_train shape: (3630, 1043)
+
+상위 20개 중요 특징:
+         feature  importance
+736    embed_736    6.537288
+234    embed_234    6.288824
+302    embed_302    5.986104
+224    embed_224    1.937760
+829    embed_829    1.612412
+568    embed_568    1.481768
+911    embed_911    1.370897
+1006  embed_1006    1.351739
+557    embed_557    1.319250
+615    embed_615    1.240409
+282    embed_282    1.041148
+787    embed_787    1.009322
+577    embed_577    0.937439
+570    embed_570    0.883454
+125    embed_125    0.845672
+1013  embed_1013    0.842257
+28      embed_28    0.834044
+915    embed_915    0.809775
+492    embed_492    0.779751
+691    embed_691    0.778557
+
+
+실제 제출 LB = 0.312798952 -> 하지만 점수는 망가짐..
+
+=> 문제 해결 : Chemeleon가중치false, configure_optimizers수정, pIC50_factor 복원
+
+LB = 0.426547064
+
+=> CombinedBatchLoss weight 약하게 변경, Scheduler  T_max=20
+
+LB = 0.3538094764
+
+실험 11. BindingDB에서 외부 데이터 구하기
+
+Target으로 Mitogen-activated protein kinase kinase kinase 5 에서 IC50을 가지고 있는 데이터 + Publication이 2025년 이전 데이터
+URL = 
+https://www.bindingdb.org/rwd/jsp/dbsearch/PrimarySearch_ki.jsp?tag=polic50&column=IC50&polymerid=7285&energytern=kJ/mole&kiunit=nM&icunit=nM&submit=Search&target=Mitogen-activated+protein+kinase+kinase+kinase+5#
+
+
+Filter my 2492 hits
+Targets 1▿
+Publications 50
+US Patent USRE48711 (2021) 264
+US Patent US11345699 (2022) 209
+US Patent US11168095 (2021) 209
+US Patent US10450301 (2019) 191
+US Patent US10654833 (2020) 94
+US Patent US10150755 (2018) 89
+US Patent US11008304 (2021) 85
+US Patent US10919911 (2021) 81
+US Patent US11560368 (2023) 71
+US Patent US10988458 (2021) 71
+US Patent US10683279 (2020) 71
+J Med Chem 64: 15402-15419 (2021) 58
+US Patent US10787435 (2020) 57
+J Med Chem 62: 10740-10756 (2019) 52
+Eur J Med Chem 195: (2020) 46
+US Patent US9908875 (2018) 45
+Eur J Med Chem 61: 104-15 (2013) 42
+US Patent US10253018 (2019) 41
+US Patent US8802695 (2014) 41
+Eur J Med Chem 220: (2021) 40
+US Patent US11136324 (2021) 38
+US Patent US11897898 (2024) 37
+ACS Med Chem Lett 11: 485-490 (2020) 36
+US Patent USRE48150 (2020) 34
+US Patent US11345676 (2022) 34
+Bioorg Med Chem 23: 2489-97 (2015) 34
+US Patent US10968199 (2021) 30
+Eur J Med Chem 247: (2023) 28
+Eur J Med Chem 211: (2021) 27
+US Patent US10683289 (2020) 23
+US Patent US11466033 (2022) 21
+Eur J Med Chem 145: 606-621 (2018) 19
+US Patent US10307427 (2019) 18
+US Patent US9051313 (2015) 18
+ACS Med Chem Lett 8: 316-320 (2017) 18
+US Patent US11040968 (2021) 17
+US Patent US10597382 (2020) 16
+RSC Med Chem 15: 856-873 (2024) 14
+US Patent US11136325 (2021) 14
+Bioorg Med Chem Lett 22: 7326-9 (2012) 13
+US Patent US11434249 (2022) 13
+Bioorg Med Chem Lett 30: (2020) 12
+J Nat Prod 81: 949-956 (2018) 10
+Bioorg Med Chem Lett 27: 1709-1713 (2017) 8
+Bioorg Med Chem 19: 486-9 (2011) 8
+US Patent US10370352 (2019) 7
+US Patent US11124496 (2021) 7
+J Med Chem 54: 2680-6 (2011) 7
+Bioorg Med Chem Lett 24: 4418-23 (2014) 6
+Bioorg Med Chem Lett 18: 3752-5 (2008) 6
+
+=> 중복 제거하고 데이터 저장 train_dataset_with_4source.csv
+
+=> 추가한 데이터가 실험 조건에 잘 안 맞는지 점수가 너무 평균으로 회귀함.
+
+실험 12. 새롭게 Chemprop D-MPNN Embedding + ECFP + RDKIT 으로 CAT 예측
+최대한 오버피팅, 과적합 조심하면서
+
+
+=== Phase 4 & 5: D-MPNN DFT & Extraction ===
+Downloading Chemeleon model...
+Using 16bit Automatic Mixed Precision (AMP)
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+HPU available: False, using: 0 HPUs
+You are using a CUDA device ('NVIDIA GeForce RTX 3080') that has Tensor Cores. To properly utilize them, you should set `torch.set_float32_matmul_precision('medium' | 'high')` which will trade-off precision for performance. For more details, read https://pytorch.org/docs/stable/generated/torch.set_float32_matmul_precision.html#torch.set_float32_matmul_precision
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+Starting Fine-Tuning with DFT...
+
+  | Name          | Type              | Params | Mode 
+------------------------------------------------------------
+0 | model         | MPNN              | 12.9 M | train
+1 | loss_function | CombinedBatchLoss | 0      | train
+------------------------------------------------------------
+12.9 M    Trainable params
+0         Non-trainable params
+12.9 M    Total params
+51.651    Total estimated model params size (MB)
+30        Modules in train mode
+0         Modules in eval mode
+
+...
+Metric val_loss improved by 0.000 >= min_delta = 0.0. New best score: 0.196
+
+Embeddings extracted. Shape: (3468, 1024)
+
+--- Fold 1/5 ---
+Warning: less than 75% GPU memory available for training. Free: 7155 Total: 10239.5
+0:	learn: 1.3560094	test: 1.4271102	best: 1.4271102 (0)	total: 100ms	remaining: 8m 21s
+1000:	learn: 0.3251544	test: 0.3310918	best: 0.3310692 (974)	total: 20.6s	remaining: 1m 22s
+bestTest = 0.3310510452
+bestIteration = 1082
+Shrink model to first 1083 iterations.
+  Fold 1 RMSE: 0.3311, Score: 0.5682, Overfit: -0.0019
+  Val Max Pred: 12.90, Val Max True: 13.00
+
+--- Fold 2/5 ---
+Warning: less than 75% GPU memory available for training. Free: 7155 Total: 10239.5
+0:	learn: 1.3773060	test: 1.3427412	best: 1.3427412 (0)	total: 24.4ms	remaining: 2m 1s
+bestTest = 0.3445276314
+bestIteration = 739
+Shrink model to first 740 iterations.
+  Fold 2 RMSE: 0.3445, Score: 0.5612, Overfit: 0.0049
+  Val Max Pred: 12.80, Val Max True: 13.00
+
+--- Fold 3/5 ---
+Warning: less than 75% GPU memory available for training. Free: 7155 Total: 10239.5
+0:	learn: 1.3718889	test: 1.3647562	best: 1.3647562 (0)	total: 21.2ms	remaining: 1m 46s
+bestTest = 0.3716073453
+bestIteration = 524
+Shrink model to first 525 iterations.
+  Fold 3 RMSE: 0.3716, Score: 0.5562, Overfit: 0.0107
+  Val Max Pred: 12.61, Val Max True: 13.00
+
+--- Fold 4/5 ---
+Warning: less than 75% GPU memory available for training. Free: 7155 Total: 10239.5
+0:	learn: 1.3804469	test: 1.3295526	best: 1.3295526 (0)	total: 23.5ms	remaining: 1m 57s
+1000:	learn: 0.3281961	test: 0.3271464	best: 0.3271464 (1000)	total: 20.2s	remaining: 1m 20s
+bestTest = 0.3269236355
+bestIteration = 1183
+Shrink model to first 1184 iterations.
+  Fold 4 RMSE: 0.3269, Score: 0.5644, Overfit: 0.0027
+  Val Max Pred: 12.90, Val Max True: 13.00
+
+--- Fold 5/5 ---
+Warning: less than 75% GPU memory available for training. Free: 7155 Total: 10239.5
+0:	learn: 1.3662300	test: 1.3874625	best: 1.3874625 (0)	total: 24.5ms	remaining: 2m 2s
+1000:	learn: 0.3160946	test: 0.3860384	best: 0.3855610 (800)	total: 20s	remaining: 1m 19s
+bestTest = 0.3855609875
+bestIteration = 800
+Shrink model to first 801 iterations.
+  Fold 5 RMSE: 0.3856, Score: 0.5544, Overfit: 0.0134
+  Val Max Pred: 12.75, Val Max True: 13.00
+
+
+=== Phase 7: Final Evaluation & Submission ===
+--- Overall OOF Results ---
+OOF Competition Score: 0.5610 (A: 0.0000, B: 0.9349)
+
+--- Generalization Analysis (Key Indicators) ---
+CV Score Mean: 0.5609
+🔥 CV Score Stability (Std Dev): 0.0051 (낮을수록 안정적)
+🔥 Avg Overfit Indicator: 0.0060 (0에 가까울수록 좋음)
+
+--- Test Prediction Distribution (pIC50) ---
+Max: 8.1933
+
+Submission file created: submission_FinalStrategy_CV0.5610.csv
+
+============================================================
+TEST 예측 분석
+============================================================
+           Train     OOF  Test
+Min         3.30    4.02  6.60
+Max        13.00   12.90  8.19
+Mean        7.28    7.28  7.38
+Std         1.38    1.33  0.34
+Count>10  102.00  101.00  0.00
+Count>11  102.00   98.00  0.00
+
+분포 형태:
+  Skewness: 0.370 (0=정규, +우측꼬리, -좌측꼬리)
+  Kurtosis: 0.051 (0=정규, +뾰족, -평평)
+
+
+LB = 0.3752156737 -> ??
+
+
+< DFT 강화 + 6-membered (피리다진/피리미딘 계열) 추가 >
+
+
+=== Phase 7: Final Evaluation & Submission ===
+--- Overall OOF Results ---
+OOF Competition Score: 0.5544 (A: 0.0000, B: 0.9240)
+
+--- Generalization Analysis (Key Indicators) ---
+CV Score Mean: 0.5523
+🔥 CV Score Stability (Std Dev): 0.0268 (낮을수록 안정적)
+🔥 Avg Overfit Indicator: 0.0210 (0에 가까울수록 좋음)
+
+--- Test Prediction Distribution (pIC50) ---
+Max: 9.7850
+
+Submission file created: submission_FinalStrategy_CV0.5544.csv
+
+============================================================
+TEST 예측 분석
+============================================================
+           Train     OOF  Test
+Min         3.30    3.97  6.14
+Max        13.00   12.93  9.78
+Mean        7.40    7.39  7.29
+Std         1.49    1.43  0.49
+Count>10  136.00  128.00  0.00
+Count>11  136.00  124.00  0.00
+
+분포 형태:
+  Skewness: 1.638 (0=정규, +우측꼬리, -좌측꼬리)
+  Kurtosis: 7.065 (0=정규, +뾰족, -평평)
+
+
+실험 14. 코드 개선
+
+1. P0. 평가지표 구현 오류로 검증/선택이 왜곡
+대회 공식은 A=RMSE/(max−min), B=(Pearson)^2
+ 지표 함수를 공식대로 교정하고, 체크포인트 모니터를 이 지표로 바꿔 모델 선택/얼리스톱을 일치시켜야 함.
+점수 함수/모니터: 공식 Score로 교정(분모=range, B=Pearson²) + mode='max'. 
+
+2. Fine‑Tuning이 실질적으로 꺼져 있음
+메시지패싱을 저LR로 미세조정(예: 본체 1e‑4×0.01, 헤드 1e‑4), 드롭아웃·WD로 안정화.
+
+3. 증강 라벨링 스케일 오류
+IC50(nM) 공간에서 계수 곱 → 다시 pIC50로 변환(또는 pIC50에 +Δ 형태로 반영). 증강 표본은 가중치 낮춰 학습(weak labeling). ( 증강 라벨링을 “로그 일관성”으로 교정)
+아마이드→바이오아이소스테어(설폰아마이드/옥사다이아졸/트리아졸/피리다진/피리미딘 등) 치환은 유지하되 라벨은 덧셈 규칙으로.
+
+4. 고활성 가중치가 코드상 비활성화
+{10:2, 11:5, 12:8}로 활성 상위 구간 가중 활성화(+ 미니배치 균형 샘플링).
+
+5. 특징 결합 방식이 임베딩 치우침을 강화
+(a) MPNN 미세조정 + x_d 차원/가중 컨트롤(드롭아웃↑, LayerNorm, 작은 hidden), (b) 두 갈래(head) → late‑fusion/스태킹으로 분리 학습 후 메타모델에서 결합(실험 1의 접근으로 되돌림).
+
+6. 모델 선택 기준
+**val_competition_score를 모니터(최대화)**로 변경. 제출 직전엔 pIC50→IC50 변환 및 **isotonic calibration(단조)**은 pIC50 공간에서 수행 후 변환.
+
+7. 분할: Neighbor‑aware Random(Group=ECFP‑Butina, bins+source 층화). 
+
+
+(A) Chemprop만으로 예측
+
+Chemprop만으로 예측 + Scaffold hopping + Weighted MSE/PearsonCorr/Pairwise ranking loss 
+
+LB = 0.3265491535
+
+amide bioisosteres 빼고 했을때,  Weighted MSE/PearsonCorr loss + Chemprop만으로 예측
+
+LB = 0.3667991073
+
+=> 평균으로만 회귀했는데도 예측을 전혀 못하는것 같음.
+
+
+패치 1) Warm‑up & Ranking 램프 제대로 적용, 
+패치 2) 캘리브레이션은 언클립 OOF로 맞추고, 클립은 마지막에 1회, 
+패치 3) X_d 이중 스케일링 제거, 
+패치 4) 증강(Scaffold hopping) 강도/라벨 재조정
+
+[Fold 1] val_score=0.42003 (A=1.10101, B=0.70004)
+[Fold 2] val_score=0.40316 (A=6.28499, B=0.67193)
+[Fold 3] val_score=0.79783 (A=0.05436, B=0.69928)
+[Fold 4] val_score=0.47727 (A=0.66018, B=0.56890)
+[Fold 5] val_score=0.58051 (A=0.55515, B=0.67096)
+
+[OOF] RAW(view)  : Score=0.769856 (A=0.068680, B=0.662213)
+[OOF] ISO(view) : Score=0.805123 (A=0.027520, B=0.693551)
+[OOF] LIN(view)  : Score=0.780287 (A=0.039850, B=0.660378)
+
+[OOF] SELECT → iso (Score=0.805123)
+Saved: oof_chemprop_direct.csv, test_preds_chemprop_direct.npz
+
+=== Summary (pIC50) ===
+Train(pIC50) | min=3.30 max=13.00 mean=7.19 std=1.13  (>10:17, >11:17)
+OOF(sel)     | min=4.87 max=13.00 mean=7.19 std=0.94  (>10:10, >11:10)
+Test(final)  | min=5.86 max=8.24 mean=7.17 std=0.35  (>10:0, >11:0)
+
+[Compression] std(test)/std(train) = 0.308  (≈1.0 이상이 바람직)
+❌ 경고: Test 예측 max<9 → 고활성 예측 실패 가능성이 큼.
+
+< Scaffold hopping 증강 옵션 변경 >
+
+AUG=dict(         # Scaffold hopping 증강(옵션)
+        USE=True,
+        THRESHOLD=10.5,          # 증강 대상 최소 pIC50 (OOF로 튜닝)
+        PER_PARENT_MAX=2,        # parent-당 최대 생성 채택 수
+        TOTAL_FRAC_MAX=0.10,     # 전체 train 대비 증강 비율 상한(<=4%)
+        KEEP_PROB=0.75,           # 생성물 채택 확률(랜덤 억제)
+        IC50_FACTOR_CHOICES=[0.60, 0.70, 0.80, 0.90, 1.00],  # 라벨 배율 후보(=IC50×k)
+        SEED=42
+    )
+
+USE_XD=False
+
+[Fold 1] val_score=0.82115 (A=0.07096, B=0.74922)
+[Fold 2] val_score=0.41576 (A=1.77320, B=0.69293)
+[Fold 3] val_score=0.81375 (A=0.05973, B=0.72941)
+[Fold 4] val_score=0.68644 (A=0.09823, B=0.54289)
+[Fold 5] val_score=0.81383 (A=0.06763, B=0.73479)
+
+[OOF] RAW(view)  : Score=0.803239 (A=0.034365, B=0.694975)
+[OOF] ISO(view) : Score=0.823323 (A=0.027526, B=0.723889)
+[OOF] LIN(view)  : Score=0.803092 (A=0.034935, B=0.695110)
+
+[OOF] SELECT → iso (Score=0.823323)
+Saved: oof_chemprop_direct.csv, test_preds_chemprop_direct.npz
+
+=== Summary (pIC50) ===
+Train(pIC50) | min=3.30 max=13.00 mean=7.19 std=1.13  (>10:17, >11:17)
+OOF(sel)     | min=4.69 max=13.00 mean=7.19 std=0.96  (>10:16, >11:16)
+Test(final)  | min=5.50 max=8.04 mean=7.28 std=0.41  (>10:0, >11:0)
+
+[Compression] std(test)/std(train) = 0.359  (≈1.0 이상이 바람직)
+❌ 경고: Test 예측 max<9 → 고활성 예측 실패 가능성이 큼.
+
+
+
+---
+
+이게 계속 train/test 데이트의 스캐폴드 구조 차이를 메꾸려고 여러 방법을 사용해봤는데,
+LB가 심각하게 떨어지고, 심지어 TEST 타겟 예측을 8이상으로 하지를 못함
+=> 
+핵심 결론
+
+“Test가 거의 chromone(+triazole)”라는 주장은 틀립니다.
+RDKit로 chromone/coumarin 핵(c1oc2ccccc2c(=O)c1 또는 O=c1oc2ccccc2cc1)을 매칭해보면 **Test 1/127 (0.8%)**만 해당합니다.
+
+Test의 triazole 링은 100% 맞습니다. (1,2,4‑triazole 패턴 일치)
+
+예시처럼 눈에 띄는 4‑quinazolinone(벤조‑1,3‑디아진‑4‑온) 핵(…n2ccc3…c3c2=O)은 **Test 7/127 (5.5%)**에만 존재합니다. 즉, Test의 대다수는 chromone도, 4‑quinazolinone도 아닙니다.
+
+Train–Test 중복은 0건(캐논 SMILES 기준 교집합 0)입니다.
+
+할로젠 빈도는 Test에서 Br 12.6%, F 37.0%, Cl 4.7%였고, Train은 Br 2.75%, F 31.3%, Cl 4.32%였습니다.
+
+해석
+
+**도메인 쉬프트는 “chromone 집중”이 아니라 “triazole 100% + 특정 링크/치환 패턴 편중”**입니다.
+Test의 대다수는 chromone도, 4‑quinazolinone도 아니며, **triazole‑aryl 링크(문자열 기준 71.7%)**와 **i‑Pr‑triazole(64.6%)**이 두드러집니다.
+
+Train의 핵심 도메인(quinazolinone+triazole)은 소수(1.74%)이고, 그 안에서도 pIC50이 7.30103로 심각하게 몰림(74%) → 모델이 해당 구조를 보면 7.3 근방으로 수렴 예측할 위험이 큽니다.
+
+할로젠 분포도가 다릅니다(특히 Br: Test 12.6% vs Train 2.75%). 브로민 치환 도메인은 Train에 부족합니다.
+
+=> 이러기 때문에 당연히 모든 TEST 타겟값은 대부분 7.3 정도로 예측함.
+=> 그래서 어처피 스캐폴드 구조 차이 극복 방법을 사용해서  LB 0.3정도로 떨어질바에
+그냥 원래 LB 0.568 나왔던 실험 7 코드에서 시작하는게 좋아보임.
+
+실험 16. 실험 7에서 여러가지 변경해보기
+
+일단 CV가 거의 0.9로 계속 나와서 이것부터가 문제임. 적절한 CV를 어떻게 정의해야될지 모르겠음.
+(훈련 데이터랑 테스트 데이터의 구조가 아예 달라버리니까 훈련 데이터를 잘 예측한다고 그게 테스트를 잘 맞춘다는 뜻이 아님...)
+
+CV 변경 후
+
+Proxy-Test: train 분자의 TEST 최근접 유사도 기반으로 하위 20% 고정 검증셋
+<_cano가 아닌 데이터>
+OOF(non-proxy) Competition Score: 0.6871 (A=0.9107, B=0.5381)
+Proxy-Test Competition Score: 0.6526 (A=0.8730, B=0.5057)
+예측 pIC50 분포:
+평균: 7.15
+표준편차: 0.38
+최소값: 6.16
+최대값: 8.07
+
+
+LB = 0.5496398606	
+
+<_cano 데이터>
+OOF(non-proxy) Competition Score: 0.8554 (A=0.9402, B=0.7988)
+Proxy-Test Competition Score: 0.8139 (A=0.9102, B=0.7497)
+
+예측 pIC50 분포:
+평균: 7.22
+표준편차: 0.32
+최소값: 6.19
+최대값: 7.88
+
+LB = 0.5064567853
+=> 중복제거 해버리니까 CV가 쉬워지고, 학습 데이터의 시리즈(동일/유사 스캐폴드) 가중이 사라짐 → 테스트(Top‑5 스캐폴드가 49% 차지)와 도메인 미스매치
+
+
+
+
+
+
+
+
+내가 사용한 SMILES Enumeration, Mixup 같은 데이터 증강 방법들은 분명히 성능에 도움이 되는것 같은데, 이전에는 고활성부분만 증강하면 된다고 생각해서 코드를 고활성 부분만 집중시켰는데, 우리가 데이터를 분석하니까 그게 문제가 아니였잖아? 실제로 제대로 된 증강을 하려면 어떻게 변경해야 될까?
+
+그리고 내가 새로 발견한 한가지는 특성 중요도 Top 20에 임베딩 특징만 있는게 아니라 다른 추가 특징이 섞여있으면 LB가 좋아지는것을 발견했어.
+
+
+

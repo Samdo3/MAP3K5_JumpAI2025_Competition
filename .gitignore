@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.env
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb_checkpoints/
+
+# Data files
+*.csv
+!train_dataset_final_pIC50.csv
+!test.csv
+!sample_submission.csv
+
+# Model files
+*.pkl
+*.pth
+*.h5
+*.ckpt
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.bak
+*.log
+
+# Exclude large model outputs but keep directory structure
+exp*/models/*
+!exp*/models/.gitkeep
+exp*/meta_output/*
+!exp*/meta_output/.gitkeep
