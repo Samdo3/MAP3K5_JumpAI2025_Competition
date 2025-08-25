@@ -35,111 +35,160 @@ Score = 0.4 × (1 - min(A, 1)) + 0.6 × B
 
 ## 🚀 솔루션 전략
 
-### 1. 데이터 전처리 및 증강
+### 1. 3단계 파이프라인 아키텍처
 
-#### 1.1 데이터 통합 (`data_transform.ipynb`)
+#### Phase 1: 데이터 준비 및 특징 공학
 ```python
-# 3개 데이터 소스에서 SMILES와 pIC50 추출 및 통합
-- CAS: 3,430개 → SMILES 정규화 → 중복 제거
-- ChEMBL: 714개 → pChEMBL Value 활용
-- PubChem: 1,148개 → Activity_Value를 pIC50로 변환
-→ 최종: 3,834개 unique 분자
+# 데이터 로드 및 전처리
+- train_dataset_with_3source.csv: 3,834개 분자 (source 정보 포함)
+- 분자 특징 추출: MolWt, LogP, TPSA, QED 등 14개 RDKit descriptors
+- 고활성 분자 증강: pIC50 > 10인 분자에 대해 SMILES Enumeration 3배 적용
 ```
 
-#### 1.2 고활성 분자 데이터 증강
+#### Phase 2: MPNN 임베딩 추출
 ```python
-# SMILES Enumeration: 분자 표현의 다양성 활용
-- 고활성 분자(pIC50 > 10)에 대해 3배 증강
-- RDKit을 이용한 동일 분자의 다른 SMILES 표현 생성
-- 목적: 모델이 고활성 분자의 다양한 표현을 학습하도록 유도
+# ChemELon 사전학습 모델 기반 분자 임베딩
+- ChemELon Foundation Model (2048차원) + Fine-tuning
+- Message Passing: Bond-based with ChemELon weights
+- Aggregation: Mean pooling
+- FFN: 2048 → 1024 → 512 → 256 → 1
+- 최종 임베딩: 256차원 (FFN 마지막 은닉층)
 ```
 
-### 2. 모델 아키텍처
-
-#### 2.1 MPNN (Message Passing Neural Network) + Pretrained Embedding
+#### Phase 3: CatBoost 최종 예측
 ```python
-# ChemProp 기반 D-MPNN with Transfer Learning
-- 백본: ChemProp의 MPNN 아키텍처
-- 사전학습: ChemELon 가중치 활용 (대규모 분자 데이터로 학습된 표현)
-- Fine-tuning: 전체 파라미터 학습 가능하도록 설정
-- Hidden: 600차원, Depth: 7층, Dropout: 0.3
+# 임베딩 + 테이블 특징으로 최종 예측
+- 입력: MPNN 임베딩(256차원) + RDKit 특징(14차원) = 270차원
+- 모델: CatBoost with sample weighting
+- CV: 5-Fold Stratified (pIC50 기반 그룹)
 ```
 
-#### 2.2 임베딩 기반 앙상블
-```python
-# MPNN으로 추출한 분자 임베딩을 Tree 모델들의 입력으로 활용
-1. MPNN으로 600차원 분자 임베딩 추출
-2. ECFP (Extended Connectivity Fingerprint) 특징 추가
-3. CatBoost 앙상블 학습
-```
+### 2. 핵심 기법
 
-### 3. 핵심 기법
-
-#### 3.1 가중치 기반 손실 함수 (Weighted Loss)
+#### 2.1 CombinedBatchLoss (Weighted MSE + Correlation Loss)
 ```python
 class CombinedBatchLoss:
-    """고활성 분자에 높은 가중치를 부여하는 손실 함수"""
-    def __init__(self, weight_configs={10: 5, 12: 10}):
-        # pIC50 > 10: 5배 가중치
-        # pIC50 > 12: 10배 가중치
-        self.weight_configs = weight_configs
+    def __init__(self, alpha=0.4, weight_configs={10: 5, 12: 10}):
+        # alpha: WMSE 비중 (대회 지표 0.4와 일치)
+        # weight_configs: 고활성 분자 가중치
+        # - pIC50 > 10: 5배 가중치
+        # - pIC50 > 12: 10배 가중치
 ```
-- **목적**: 모델이 소수의 고활성 분자를 무시하지 않도록 강제
-- **효과**: 전체 평균 오차보다 고활성 분자 예측에 집중
+- **목적**: 대회 평가지표(0.4×RMSE + 0.6×R²)에 최적화
+- **효과**: 고활성 분자 예측 정확도 향상 + 상관관계 개선
 
-#### 3.2 Scaffold 편향 제거
+#### 2.2 차별화된 학습률 전략
 ```python
-# 특정 scaffold에 과적합되지 않도록 처리
-- 학습 시 scaffold 정보를 피처로 사용하지 않음
-- 대신 부분 구조(ECFP) 특징을 활용하여 일반화 능력 향상
-```
-
-#### 3.3 계층적 교차 검증 (Stratified K-Fold)
-```python
-# pIC50 그룹별 균등 분할
-- 초고활성(pIC50 > 10), 고활성(8 < pIC50 ≤ 10), 일반(pIC50 ≤ 8)
-- 각 Fold에 모든 그룹이 균등하게 포함되도록 보장
+# ChemELon과 FFN에 다른 학습률 적용
+- ChemELon 파라미터: base_lr × 0.01 (미세조정)
+- FFN 파라미터: base_lr × 1.0 (적극적 학습)
+- Warmup: 2 epochs with linear scheduling
 ```
 
-### 4. 후처리 기법
-
-#### 4.1 Isotonic Regression Calibration
+#### 2.3 SMILES Enumeration (고활성 분자만)
 ```python
-# 예측값 보정을 통한 성능 향상
-- OOF 예측값을 isotonic regression으로 보정
-- 단조성을 유지하면서 예측 분포 개선
-- Competition Score: 0.96924 → 0.97036
+# pIC50 > 10인 분자만 선택적 증강
+- 각 분자당 3개 alternative SMILES 생성
+- GroupID 유지로 데이터 누출 방지
+- 효과: 고활성 분자 학습 강화 without overfitting
+```
+
+#### 2.4 샘플 가중치 (CatBoost)
+```python
+def calculate_sample_weights(y):
+    weights = np.ones_like(y)
+    weights[y > 8] = 2.0    # 고활성
+    weights[y > 10] = 5.0   # 초고활성
+    weights[y > 12] = 10.0  # 극초고활성
+    return weights
+```
+
+### 3. 모델 구성 세부사항
+
+#### 3.1 MPNN Architecture
+```python
+# Message Passing (ChemELon)
+- Input: Bond features + Atom features
+- Hidden: 2048차원
+- Depth: 5 layers
+- Activation: ReLU
+- Dropout: 0.2
+
+# Feed-Forward Network
+- Architecture: [2048, 1024, 512, 256, 1]
+- Dropout: 0.3
+- Batch Norm: False (ChemELon과 충돌 방지)
+```
+
+#### 3.2 CatBoost Hyperparameters
+```python
+{
+    'iterations': 300,
+    'learning_rate': 0.08,
+    'depth': 7,
+    'l2_leaf_reg': 5,
+    'min_data_in_leaf': 20,
+    'random_strength': 0.5,
+    'bagging_temperature': 0.7,
+    'border_count': 128,
+    'grow_policy': 'Lossguide',
+    'max_leaves': 64
+}
 ```
 
 ## 📊 실험 결과
 
-### 최종 성능
-- **Local CV Score**: 0.9472 (RMSE: 0.3313, R²: 0.9353)
-- **Public LB Score**: 0.5689
-- **예측 범위**: pIC50 5.87 ~ 8.11
+### 최종 성능 (exp7)
+```python
+# Cross-Validation (5-Fold Stratified)
+평균 CV RMSE: 0.4507 ± 0.0226
+평균 CV R2: 0.9484 ± 0.0055
+Competition Score: 0.9506 (A: 0.9535, B: 0.9488)
+
+# Leaderboard
+Public LB Score: 0.5689
+```
+
+### 예측 분포 분석
+```python
+# 훈련 데이터 고활성 분자 예측 성능
+- pIC50 > 10인 357개 중 357개 정확히 예측 (100%)
+- pIC50 > 11인 357개 중 355개 정확히 예측 (99.4%)
+
+# 테스트 데이터 예측 분포
+- 평균: 7.11
+- 표준편차: 0.43
+- 최소값: 6.07
+- 최대값: 8.11
+- 핵심 분자(TEST_015~017) 평균 pIC50: 6.74
+```
 
 ### 주요 실험 히스토리
-| 실험 | 방법 | CV Score | LB Score | 핵심 개선점 |
-|------|------|----------|----------|------------|
-| exp1 | Base D-MPNN | 0.968 | 0.418 | 기본 구현 |
-| exp2 | +Source Feature | 0.970 | 0.379 | 성능 하락 |
-| exp3 | +AutoGluon | 0.972 | 0.300 | 메타 모델 부적합 |
-| exp6 | MPNN Embedding+Tree | 0.874 | 0.535 | 임베딩 활용 |
-| **exp7** | **+Weighted Loss+증강** | **0.947** | **0.569** | **고활성 집중** |
+| 실험 | 방법 | CV RMSE | LB Score | 핵심 개선점 |
+|------|------|---------|----------|------------|
+| exp1 | Base D-MPNN | 0.288 | 0.418 | 기본 D-MPNN 구현 |
+| exp2 | +Source Feature | 0.276 | 0.379 | 데이터 출처 피처 추가 (실패) |
+| exp3 | +AutoGluon Meta | 0.279 | 0.300 | AutoGluon 메타 모델 (부적합) |
+| exp6 | MPNN Embedding+Tree | 0.473 | 0.535 | 임베딩 + Tree 모델 결합 |
+| **exp7** | **+Weighted Loss+SMILES Aug** | **0.451** | **0.569** | **고활성 가중치 + 선택적 증강** |
 
 ## 🔍 핵심 인사이트
 
 ### 1. "진정한 일반화"를 위한 접근
-- **문제**: 모델이 다수를 차지하는 중간 활성 분자에 과적합되어 고활성 분자를 무시
-- **해결**: 가중치 손실 함수로 고활성 분자 학습 강제
+- **문제**: 모델이 다수를 차지하는 중간 활성 분자(pIC50 6-8)에 과적합
+- **해결**: CombinedBatchLoss로 고활성 분자에 5-10배 가중치 부여
+- **결과**: 훈련 데이터의 고활성 분자 예측 정확도 100% 달성
 
-### 2. Scaffold Hopping 대응
-- **문제**: 테스트셋이 학습셋과 다른 scaffold 구조를 가질 가능성
-- **해결**: 전체 구조 대신 부분 구조(ECFP) 특징 활용
+### 2. 3단계 파이프라인의 효과
+- **MPNN 임베딩**: 분자 구조의 deep representation 학습
+- **RDKit Features**: 화학적 특성의 explicit encoding  
+- **CatBoost**: 비선형 관계 포착 및 robust prediction
+- **시너지**: 임베딩+테이블 특징 결합으로 성능 향상
 
-### 3. 사전학습 모델의 활용
-- **ChemELon**: 대규모 분자 데이터로 학습된 표현 활용
-- **Fine-tuning**: 전체 파라미터를 task-specific하게 조정
+### 3. ChemELon Transfer Learning
+- **사전학습 활용**: 2048차원의 풍부한 분자 표현
+- **차별화된 학습률**: ChemELon 0.01x, FFN 1.0x
+- **효과**: 과적합 방지하면서도 task-specific 학습 가능
 
 ## 📁 디렉토리 구조
 
@@ -147,22 +196,23 @@ class CombinedBatchLoss:
 MAP3K5_JumpAI2025_Competition/
 ├── README.md
 ├── data/
-│   ├── train_dataset_final_pIC50.csv  # 통합된 학습 데이터
+│   ├── train_dataset_with_3source.csv # 출처 정보 포함 학습 데이터
 │   ├── test.csv
 │   └── sample_submission.csv
 ├── exp7/
-│   ├── MPNN_Embedding_DataAG.ipynb    # 최종 솔루션
-│   └── models/                        # 학습된 모델 가중치
+│   ├── MPNN_Embedding_DataAG.ipynb    # 최종 솔루션 (Jupyter)
+│   ├── MPNN_Embedding_DataAG.py       # 최종 솔루션 (Python)
+│   ├── best_catboost_model.cbm        # 학습된 CatBoost 모델
+│   └── best_chemprop_model.pt         # 학습된 MPNN 모델
 ├── data_transform.ipynb               # 데이터 전처리
-├── papers/                             # 참고 논문
+├── 참고논문/                           # 참고 논문
 │   ├── MPNN.pdf
 │   ├── Chemprop A Machine Learning Package.pdf
 │   └── ...
-└── docs/
-    ├── 대회정보.txt
-    ├── 실험노트.txt
-    └── 평가지표.jpg
-```
+├── 대회정보.txt                        # 대회 상세 정보
+├── 실험노트.txt                        # 실험 기록
+├── EDA.txt                            # 탐색적 데이터 분석
+└── 평가지표.jpg                        # 평가 지표 설명
 
 ## 🛠 환경 설정
 
@@ -180,14 +230,17 @@ MAP3K5_JumpAI2025_Competition/
 
 ### 실행 방법
 ```bash
-# 1. 데이터 전처리
-python data_transform.ipynb
+# 1. 데이터 전처리 (이미 완료됨)
+# data/train_dataset_with_3source.csv 파일 사용
 
 # 2. 모델 학습 및 예측
-python exp7/MPNN_Embedding_DataAG.ipynb
+cd exp7
+python MPNN_Embedding_DataAG.py
+# 또는 Jupyter로 실행
+jupyter notebook MPNN_Embedding_DataAG.ipynb
 
 # 3. 제출 파일 생성
-# submission_catboost.csv 자동 생성
+# submission_catboost.csv 자동 생성됨
 ```
 
 ## 📚 참고 문헌
@@ -204,30 +257,6 @@ python exp7/MPNN_Embedding_DataAG.ipynb
 
 4. **Transfer Learning in Drug Discovery**
    - ChemELon: Large-scale molecular property prediction
-
-## 🏆 결론 및 향후 개선 방향
-
-### 성과
-- 고활성 분자 예측에 특화된 모델 개발
-- 가중치 손실 함수를 통한 불균형 데이터 문제 해결
-- 사전학습 모델과 도메인 지식의 효과적 결합
-
-### 한계 및 개선 방향
-1. **예측 범위 제한**: 테스트셋에서 pIC50 > 9 예측 실패
-   - 원인: 학습 데이터의 고활성 분자 부족
-   - 개선: 더 많은 외부 고활성 데이터 수집 필요
-
-2. **Generalization Gap**: CV와 LB 점수 차이
-   - 원인: 테스트셋의 분포가 학습셋과 상이
-   - 개선: Domain Adaptation 기법 적용 검토
-
-3. **앙상블 최적화**
-   - 다양한 아키텍처(GNN, Transformer) 결합
-   - Stacking 전략 개선
-
-## 👥 Contact
-
-질문이나 피드백이 있으시면 이슈를 남겨주세요!
 
 ---
 *이 프로젝트는 Jump AI 2025 제3회 AI 신약개발 경진대회 참가작입니다.*
