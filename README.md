@@ -196,54 +196,44 @@ Public LB Score: 0.5689
 - **차별화된 학습률**: CheMeleon 0.01x, FFN 1.0x
 - **효과**: 과적합 방지하면서도 task-specific 학습 가능
 
-## 📁 디렉토리 구조
+## 📁 레포지토리 구조
 
 ```
 MAP3K5_JumpAI2025_Competition/
-├── README.md
-├── data/
-│   ├── train_dataset_with_3source.csv # 출처 정보 포함 학습 데이터
-│   ├── test.csv
-│   └── sample_submission.csv
-├── exp7/
-│   ├── MPNN_Embedding_DataAG.ipynb    # 최종 솔루션 (Jupyter)
-│   ├── MPNN_Embedding_DataAG.py       # 최종 솔루션 (Python)
-│   ├── best_catboost_model.cbm        # 학습된 CatBoost 모델
-│   └── best_chemprop_model.pt         # 학습된 D-MPNN 모델
-├── data_transform.ipynb               # 데이터 전처리
-├── 참고논문/                           # 참고 논문
+├── README.md                                      # 프로젝트 개요 및 솔루션 설명
+├── .gitignore                                     
+├── data/                                          # 데이터 파일
+│   ├── train_dataset_with_3source.csv            # 학습 데이터 (3개 소스 통합)
+│   ├── test.csv                                  # 테스트 데이터
+│   └── sample_submission.csv                     # 제출 양식
+├── exp7/                                          # 최종 솔루션 (exp7)
+│   ├── MPNN_Embedding_DataAG.ipynb              # Jupyter 노트북 버전
+│   └── MPNN_Embedding_DataAG.py                 # Python 스크립트 버전
+├── data_transform.ipynb                          # 데이터 전처리 코드
+├── 참고논문/                                      # 관련 연구 논문
 │   ├── MPNN.pdf
-│   ├── Chemprop A Machine Learning Package.pdf
-│   └── ...
-├── 대회정보.txt                        # 대회 상세 정보
-├── 실험노트.txt                        # 실험 기록
-├── EDA.txt                            # 탐색적 데이터 분석
-└── 평가지표.jpg                        # 평가 지표 설명
-
-## 🛠 환경 설정
-
-### Requirements
-```bash
-# 주요 라이브러리
-- Python 3.8+
-- PyTorch 1.13+
-- RDKit 2023.03+
-- ChemProp 1.5+
-- CatBoost 1.2+
-- scikit-learn 1.3+
-- pandas, numpy, matplotlib
+│   ├── Chemprop A Machine Learning Package for Chemical Property Prediction.pdf
+│   ├── Analyzing Learned Molecular Representations for Property Prediction.pdf
+│   ├── Recent Advances in Scaffold Hopping(2017).pdf
+│   ├── Recent Scaffold Hopping Applications in Central Nervous System(2022).pdf
+│   └── s41598-023-46648-1.pdf
+├── ## 1. '진정한 일반화'를 위한 모델링 전략.txt    # 핵심 전략 문서
+├── 대회정보.txt                                   # 대회 상세 정보
+├── 실험노트.txt                                   # 실험 기록 및 결과
+├── EDA.txt                                       # 탐색적 데이터 분석
+└── 평가지표.jpg                                   # 평가 지표 시각화
 ```
 
 ### 실행 방법
 ```bash
-# 1. 데이터 전처리 (이미 완료됨)
-# data/train_dataset_with_3source.csv 파일 사용
+# 1. 필요 라이브러리 설치
+pip install torch pytorch-lightning
+pip install chemprop catboost lightgbm
+pip install rdkit-pypi scikit-learn pandas numpy matplotlib
 
 # 2. 모델 학습 및 예측
 cd exp7
 python MPNN_Embedding_DataAG.py
-# 또는 Jupyter로 실행
-jupyter notebook MPNN_Embedding_DataAG.ipynb
 
 # 3. 제출 파일 생성
 # submission_catboost.csv 자동 생성됨
