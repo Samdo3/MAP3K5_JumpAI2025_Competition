@@ -148,7 +148,7 @@ Competition Score: 0.9506 (A: 0.9535, B: 0.9488)
 (잘못된 분할 방식으로 인한 CV 과대추정 한계가 있었음. 원인 : 훈련 데이터 스캐폴드와 테스트 데이터 스캐폴드가 겹치는 부분이 거의 없었음.)
 
 # Leaderboard
-Public LB Score: 0.5689
+Public LB Score: 0.56894
 Private Score: 0.57707 (20 / 1,103)
 ```
 
