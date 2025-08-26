@@ -149,6 +149,7 @@ Competition Score: 0.9506 (A: 0.9535, B: 0.9488)
 
 # Leaderboard
 Public LB Score: 0.5689
+Private Score: 0.57707 (20 / 1,103)
 ```
 
 ### 예측 분포 분석
